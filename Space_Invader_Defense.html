@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Invader Defense</title>
+    <!-- Load Tailwind CSS CDN for utility classes -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Tone.js for sound effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <!-- Load Orbitron font for arcade look -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+    </style>
+    <!-- Tailwind Configuration -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Orbitron', 'sans-serif'],
+                    },
+                    colors: {
+                        'space-dark': '#0f172a', /* slate-900 */
+                        'shooter-glow': '#f87171', /* red-400 */
+                        'star-light': '#fef3c7', /* amber-100 */
+                        'turret': '#4ade80', /* green-400 */
+                        'invader': '#fbbf24', /* amber-400 */
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Custom Game CSS -->
+    <style>
+        /* Base styles for the "Space Defense" theme */
+        body {
+            background-color: #0f172a; /* space-dark */
+            color: #fef3c7; /* star-light */
+            font-family: 'Orbitron', sans-serif;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        /* Game Board specific styling */
+        #game-board {
+            background: radial-gradient(circle at center, rgba(15, 23, 42, 0.9) 50%, rgba(0, 0, 0, 0.7) 100%);
+            box-shadow: 0 0 30px rgba(248, 113, 113, 0.5); /* Glowing border */
+            border: 3px solid #f87171;
+            position: relative;
+            overflow: hidden;
+            /* Responsive sizing */
+            height: 70vh;
+            min-height: 300px;
+            max-width: 900px;
+            width: 95%;
+            margin-top: 1rem;
+        }
+
+        /* Turret/Base Area */
+        #turret-base {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 50px;
+            background: linear-gradient(to top, rgba(74, 222, 128, 0.2), transparent);
+            border-top: 2px solid #4ade80;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            pointer-events: none; /* Allows clicks to pass through to the board */
+        }
+        
+        .turret-icon {
+            font-size: 2rem;
+            color: #4ade80;
+            text-shadow: 0 0 10px #4ade80;
+        }
+
+        /* Invader styling and animation */
+        .invader {
+            position: absolute;
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            line-height: 45px;
+            font-size: 1.5rem;
+            background-color: #fbbf24;
+            border-radius: 6px;
+            cursor: crosshair;
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.8);
+            z-index: 10;
+            transition: opacity 0.1s, transform 0.1s;
+        }
+
+        .invader:hover {
+            transform: scale(1.1);
+        }
+
+        .explosion {
+            /* Visual feedback on hit */
+            background-color: #ef4444 !important;
+            box-shadow: 0 0 20px #facc15, 0 0 40px #ef4444;
+            opacity: 0;
+            transition: all 0.2s ease-out;
+            transform: scale(2) !important;
+        }
+
+        /* Button styling */
+        .game-button {
+            font-size: 1.25rem;
+            padding: 0.75rem 2rem;
+            cursor: pointer;
+            border: 2px solid #f87171;
+            background: #1f2937;
+            color: #f87171;
+            box-shadow: 0 4px 15px rgba(248, 113, 113, 0.4);
+            transition: all 0.15s ease-in-out;
+        }
+
+        .game-button:hover:not(:disabled) {
+            background: #f87171;
+            color: #0f172a;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(248, 113, 113, 0.6);
+        }
+
+        .game-button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .game-button:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body class="p-4 flex flex-col items-center justify-center min-h-screen">
+
+    <div class="w-full max-w-4xl flex flex-col items-center">
+        <h1 class="text-4xl sm:text-5xl font-bold mb-4 text-shooter-glow tracking-wider text-shadow-xl">
+            👾 SPACE INVADER DEFENSE 🚀
+        </h1>
+
+        <!-- Score and Timer Display -->
+        <div class="w-full flex justify-around text-xl sm:text-2xl font-mono p-4 rounded-lg bg-gray-800 border-2 border-gray-700 shadow-lg">
+            <span>SCORE: <span id="score-display" class="text-shooter-glow">0</span></span>
+            <span>TIME: <span id="timer-display" class="text-yellow-400">30</span>s</span>
+        </div>
+
+        <!-- Game Board Area -->
+        <div id="game-board" class="rounded-xl mx-auto w-full">
+            <div id="turret-base">
+                <span class="turret-icon">🛡️</span>
+            </div>
+            <!-- Invaders will be injected here -->
+        </div>
+        
+        <!-- Controls -->
+        <div class="flex space-x-4 mt-6">
+            <button id="start-button" class="game-button rounded-full">
+                Start Defense
+            </button>
+            <button id="stop-button" class="game-button rounded-full hidden bg-red-800 border-red-500 text-red-300 hover:bg-red-500 hover:text-white" disabled>
+                Stop Game
+            </button>
+        </div>
+
+        <!-- Game Over / Start Message Modal -->
+        <div id="message-modal" class="hidden fixed inset-0 bg-space-dark bg-opacity-90 z-20 items-center justify-center" onclick="hideMessage()">
+            <div class="bg-gray-800 p-8 rounded-xl shadow-2xl border-4 border-shooter-glow max-w-md w-full mx-4" onclick="event.stopPropagation()">
+                <h2 id="modal-title" class="text-3xl font-bold mb-4 text-shooter-glow">Welcome!</h2>
+                <p id="modal-message" class="text-star-light mb-6 text-lg">Defend your base! Click or tap the invading ships before they cross the green defense line. You have 30 seconds.</p>
+                
+                <button class="game-button rounded-lg w-full" onclick="hideMessage()">Got It</button>
+            </div>
+        </div>
+
+        <!-- Signature/Credit -->
+        <p class="text-xs text-gray-500 mt-6 tracking-widest uppercase">
+            Code Signature: abhijat sarari
+        </p>
+    </div>
+
+    <!-- JavaScript Game Logic -->
+    <script>
+        // Global state variables
+        let score = 0;
+        let timeLeft = 30; // 30 seconds game time
+        let gameInterval;
+        let invaderInterval;
+        let invaderSpeed = 5; // Pixels per frame
+        let invaderSpawnRate = 800; // ms
+        let animationFrameId;
+        let isGameRunning = false;
+        let lastUpdateTime = 0;
+        const invaderMoveStep = 1; // Base movement per frame update (multiplied by invaderSpeed)
+
+        // --- Tone.js Setup for simple arcade sounds ---
+        let explosionSynth;
+        let laserSynth;
+        
+        function initAudio() {
+            try {
+                if (!explosionSynth) {
+                    Tone.start();
+                    // Synth for the explosion sound (short noise burst)
+                    explosionSynth = new Tone.NoiseSynth({
+                        noise: { type: 'brown' },
+                        envelope: { attack: 0.005, decay: 0.2, sustain: 0, release: 0.05 }
+                    }).toDestination();
+                    
+                    // Synth for the laser sound (quick, high pitch)
+                    laserSynth = new Tone.PolySynth(Tone.Synth).toDestination();
+                    laserSynth.set({
+                        oscillator: { type: "sine" },
+                        envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 }
+                    });
+                }
+            } catch (e) {
+                console.error("Tone.js failed to initialize:", e);
+            }
+        }
+
+        // Sound functions
+        function playExplosionSound() {
+            if (explosionSynth) {
+                explosionSynth.triggerAttackRelease("8n");
+            }
+        }
+
+        function playLaserSound() {
+            if (laserSynth) {
+                laserSynth.triggerAttackRelease(["C6", "G5"], "16n");
+            }
+        }
+        
+        function playGameOverSound() {
+             if (laserSynth) {
+                laserSynth.triggerAttackRelease(["C3", "G2"], "0.5");
+            }
+        }
+
+        // --- Core Game Functions ---
+
+        function updateDisplay() {
+            document.getElementById('score-display').textContent = score;
+            document.getElementById('timer-display').textContent = timeLeft;
+        }
+
+        function handleHit(event) {
+            if (!isGameRunning) return;
+
+            const invader = event.currentTarget;
+            
+            // Play laser sound first (simulating the shot)
+            playLaserSound();
+
+            score += 1;
+            updateDisplay();
+
+            // Visual feedback and removal
+            invader.classList.add('explosion');
+            invader.onclick = null; // Disable further clicks
+            invader.ontouchstart = null; // Disable further touch
+            
+            // Play explosion sound after a slight delay for better effect
+            setTimeout(playExplosionSound, 50);
+
+            // Remove the element shortly after the animation
+            setTimeout(() => {
+                invader.remove();
+            }, 200);
+        }
+
+        function spawnInvader() {
+            const board = document.getElementById('game-board');
+            if (!board || !isGameRunning) return;
+
+            const boardRect = board.getBoundingClientRect();
+            const invaderSize = 45; // Must match CSS
+
+            // Calculate maximum left position
+            const maxX = boardRect.width - invaderSize;
+            
+            // Generate random position
+            const randomX = Math.random() * maxX;
+
+            const invader = document.createElement('div');
+            invader.classList.add('invader');
+            
+            // Use a random emoji for variety
+            const invaders = ['👽', '👾', '☄️', '🛰️', '🛸'];
+            invader.textContent = invaders[Math.floor(Math.random() * invaders.length)];
+
+            // Apply positioning (start at y=0)
+            invader.style.left = `${randomX}px`;
+            invader.style.top = `0px`;
+
+            // Attach click and touch handlers
+            invader.onclick = handleHit;
+            invader.ontouchstart = (e) => { e.preventDefault(); handleHit(e); };
+            
+            // Store initial Y position and movement state
+            invader.dataset.y = 0;
+
+            board.appendChild(invader);
+        }
+
+        // Game loop for moving invaders
+        function gameLoop(timestamp) {
+            if (!isGameRunning) return;
+
+            const deltaTime = timestamp - lastUpdateTime;
+            lastUpdateTime = timestamp;
+
+            // Only update movement if enough time has passed (around 60FPS)
+            if (deltaTime > 1000 / 60) { 
+                
+                const board = document.getElementById('game-board');
+                const invaders = document.querySelectorAll('.invader:not(.explosion)');
+                const baseHeight = 50; // Height of the turret base
+                const gameHeight = board.clientHeight;
+                const invaderHalfSize = 22.5;
+
+                invaders.forEach(invader => {
+                    let y = parseFloat(invader.dataset.y) + (invaderMoveStep * invaderSpeed);
+                    invader.dataset.y = y;
+                    invader.style.top = `${y}px`;
+
+                    // Check if invader has reached the defense line (game over condition)
+                    // Collision point is when the bottom of the invader touches the base's top edge
+                    if (y + invaderHalfSize > gameHeight - baseHeight) {
+                        playGameOverSound();
+                        showMessage("DEFENSE BREACHED!", `An invader crossed the line. Your final score is ${score}. Press Restart to defend again!`);
+                        endGame(false); // Game over due to breach
+                        return; // Exit loop
+                    }
+                });
+            }
+            
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+
+        // --- Message Modal Functions ---
+
+        function showMessage(title, message) {
+            const modal = document.getElementById('message-modal');
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-message').textContent = message;
+
+            // This game doesn't use Gemini, so hide its sections
+            const geminiButton = document.getElementById('gemini-button');
+            if (geminiButton) geminiButton.classList.add('hidden');
+            const geminiResults = document.getElementById('gemini-results');
+            if (geminiResults) geminiResults.classList.add('hidden');
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function hideMessage() {
+            const modal = document.getElementById('message-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+        
+        // --- Game Flow Functions ---
+
+        function endGame(isTimedOut = true) {
+            if (!isGameRunning) return;
+
+            isGameRunning = false;
+            
+            // Clear all intervals and animation frames
+            clearInterval(gameInterval);
+            clearInterval(invaderInterval);
+            cancelAnimationFrame(animationFrameId);
+
+            // Clear all remaining invaders
+            document.querySelectorAll('.invader').forEach(i => i.remove());
+            
+            // Update display if it was a timeout end
+            if (isTimedOut) {
+                playGameOverSound();
+                showMessage("TIME UP!", `Your defense lasted the entire round! Final score: ${score}. Press Restart for another deployment.`);
+            }
+
+            // Update Start/Stop buttons
+            document.getElementById('start-button').textContent = "Restart Game";
+            document.getElementById('start-button').disabled = false;
+            document.getElementById('stop-button').classList.add('hidden');
+            document.getElementById('stop-button').disabled = true;
+        }
+
+        function startGame() {
+            // Initialize audio on first click interaction
+            initAudio();
+
+            // Reset state
+            score = 0;
+            timeLeft = 30;
+            isGameRunning = true;
+            invaderSpeed = 5; // Reset speed
+            invaderSpawnRate = 800; // Reset spawn rate
+            updateDisplay();
+            hideMessage();
+            
+            // Clear any old elements
+            document.querySelectorAll('.invader').forEach(i => i.remove());
+
+            // Update Start/Stop buttons
+            document.getElementById('start-button').disabled = true;
+            document.getElementById('start-button').textContent = "DEFENSE ACTIVE...";
+            document.getElementById('stop-button').classList.remove('hidden');
+            document.getElementById('stop-button').disabled = false;
+
+            // Game Timer (decrement time)
+            gameInterval = setInterval(() => {
+                timeLeft--;
+                updateDisplay();
+                if (timeLeft <= 0) {
+                    endGame(true); // Game over due to time
+                }
+            }, 1000);
+
+            // Invader Spawner (spawn new ships)
+            invaderInterval = setInterval(spawnInvader, invaderSpawnRate); 
+            
+            // Difficulty increase (faster invaders and faster spawning)
+            const difficultyInterval = setInterval(() => {
+                if (!isGameRunning) {
+                    clearInterval(difficultyInterval);
+                    return;
+                }
+                
+                // Increase speed every 5 seconds
+                invaderSpeed += 0.5;
+                
+                // Increase spawn rate (up to a limit)
+                if (invaderSpawnRate > 300) {
+                    invaderSpawnRate -= 50;
+                    clearInterval(invaderInterval);
+                    invaderInterval = setInterval(spawnInvader, invaderSpawnRate);
+                }
+
+                if (timeLeft <= 5) {
+                    clearInterval(difficultyInterval);
+                }
+            }, 5000); // Adjust difficulty every 5 seconds
+
+            // Start the movement loop
+            lastUpdateTime = performance.now();
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // --- Event Listeners and Initial Setup ---
+
+        window.onload = function() {
+            // Attach the start game function to the button
+            document.getElementById('start-button').addEventListener('click', startGame);
+            
+            // Attach the stop game function to the button (it calls endGame)
+            document.getElementById('stop-button').addEventListener('click', () => endGame(true));
+            
+            // Show initial message
+            showMessage("Welcome to Space Invader Defense!", "Defend your base! Click or tap the invading ships before they cross the green defense line. You have 30 seconds. Good luck!");
+        };
+    </script>
+</body>
+</html>
